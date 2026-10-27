@@ -29,5 +29,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 시나리오 시연 화면 (adb shell am start -n ai.byoa.probe/.ScenarioActivity) -->
+        <activity
+            android:name=".ScenarioActivity"
+            android:exported="true">
+            <meta-data android:name="distractionOptimized" android:value="true" />
+        </activity>
     </application>
 </manifest>

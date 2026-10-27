@@ -1,12 +1,19 @@
-# 차량 에이전트 허브 (BYOA) — 구동 실험
+# 차량 에이전트 허브 (BYOA)
 
-현대자동차그룹 차량용 앱 개발 공모전(2026) 출품 기획안 **「차량 에이전트 허브」**의 구동 실험 코드입니다.
+현대자동차그룹 차량용 앱 개발 공모전(2026) 출품작 **「차량 에이전트 허브」**의 소스와 실험 기록입니다.
 
-> 출근길 운전자가 폰을 집지 않고도, 자기가 쓰던 AI 에이전트의 브리핑을 차 안에서 안전하게 듣는다.
+> 음성을 지원하는 AI 서비스라면 무엇이든 차에 연결해, 필요에 따라 모듈처럼 바꿔 끼워 쓰는 차량용 AI 에이전트 허브.
 
-허브는 사용자가 연결한 에이전트(BYOA, Bring Your Own Agent)를 차량 이벤트로 부르고,
-어떤 에이전트든 **같은 주행 안전 규칙**을 적용해 음성으로 들려줍니다.
-이 저장소는 그 핵심 흐름이 Pleos Connect 환경에서 실제로 도는지 확인한 최소 앱입니다.
+허브는 에이전트를 직접 만들어 제공하지 않습니다. 기본으로 들어 있는 것은 일정 브리핑 하나이고,
+나머지 에이전트는 사용자가 직접 만들거나 앱 공유 플랫폼에서 무료·유료로 받아 연결합니다(BYOA, Bring Your Own Agent).
+허브는 어떤 에이전트든 차량 이벤트로 부르고, 허용한 데이터만 넘기고, **같은 주행 안전 규칙**으로 들려줍니다.
+
+이 저장소에는 두 가지 앱 화면이 있습니다.
+
+| 화면 | 용도 | 실행 |
+| --- | --- | --- |
+| `MainActivity` | 구동 실험: 핵심 흐름이 Pleos Connect 환경에서 실제로 도는지 확인 | 앱 아이콘, 또는 `--ez demo true`로 자동 시연 |
+| `ScenarioActivity` | 시나리오 시연: 뉴스 요약·여행 동선·메시지 연락 에이전트를 바꿔 끼워 쓰는 장면 | `adb shell am start -n ai.byoa.probe/.ScenarioActivity` |
 
 ```
 차량 이벤트 수신 → 외부 에이전트 읽기(권한 확인) → 음성 출력 → 내비 안내 시 중단·복귀
@@ -29,6 +36,24 @@
 - 회전 목록(`onTBTInfo`)은 가까운 순서로 오고, 거리 0인 먼 시설(톨게이트 등)이 섞여 있어 제외 처리가 필요합니다.
 - Pleos TTS는 `stop()` 뒤에 완료 신호를 보내지 않습니다.
 
+## 시나리오 시연 (`ScenarioActivity`)
+
+음성을 지원하는 AI 서비스라면 무엇이든 바꿔 끼워 쓸 수 있다는 것을 세 가지 예시 에이전트로 보여줍니다.
+대본은 [`ScenarioScript.kt`](app/src/main/kotlin/ai/byoa/probe/ScenarioScript.kt), 실행 기록은 [`docs/scenario-log.txt`](docs/scenario-log.txt)입니다.
+
+1. 출근길 · 뉴스 요약 에이전트: 요약 3건 → "두 번째 기사 자세히" → 전체 본문, 읽는 중 내비 안내에 정지 후 같은 문장부터 재개
+2. 주말 여행 · 여행 동선 에이전트: 자동 트리거는 보류 → "브리핑 들려줘" → 동선·맛집·카페·숙소 → 결제는 차가 멈춘 뒤 화면에서 사진·취소 규정 확인 후 진행
+3. 퇴근길 · 메시지·연락 에이전트: 부재중·메시지 읽기 → 음성 답장 확인 후 발송 → 전화 연결
+4. 주차 후 · 오늘의 기록
+
+| 구분 | 내용 |
+| --- | --- |
+| 실제 동작 | Pleos 차량 음성 출력(TextToSpeech SDK), 내비 안내 시 정지·재개(SpeechGate), 자동 발화 보류 |
+| 재현 | 에이전트 응답(모의 데이터), 운전자 음성 요청(말풍선), 내비 안내 시점(정해진 문장) |
+| 실행하지 않음 | 예약·결제, 답장 발송, 전화 연결(확인 화면까지만) |
+
+녹화: `bash tools/record_scenario.sh` (에뮬레이터 내장 녹화로 화면과 소리를 함께 저장, `scenario.webm`)
+
 ## 설계 원칙 (코드에 그대로 구현)
 
 - **주행 상태를 모르면 주행 중으로 간주**: 최소 화면만 표시 (`DrivingState.UNKNOWN`)
@@ -42,10 +67,14 @@
 | 경로 | 내용 |
 | --- | --- |
 | `core/` | 중단·복귀 게이트, 분량 규칙, 권한 게이트, 커넥터, 실험 기록. Android·Pleos 의존 없음, 단위 테스트 포함 |
-| `app/` | 실험 화면, TextToSpeech 연결, NaviHelper 연결(예측형 정숙 구간), 오디오 포커스 탐침, 자동 시연 모드 |
+| `app/` | 실험 화면, 시나리오 시연 화면, TextToSpeech 연결, NaviHelper 연결(예측형 정숙 구간), 오디오 포커스 탐침 |
 | `tools/mock_agent.py` | '내 에이전트' 역할 웹훅 서버 (파이썬 표준 라이브러리) |
 | `tools/record_demo.sh` | 자동 시연 실행 + 에뮬레이터 화면 녹화 |
 | `docs/EXPERIMENTS.md` | 실험 체크리스트(E0~E6)와 결과 기록표 |
+
+## 설치 파일
+
+[Releases](https://github.com/goldmireu/hyundai/releases)에 디버그 APK가 있습니다. Pleos Connect Emulator v2.1.0(API 34)에 `adb install app-debug.apk`로 설치합니다.
 
 ## 실행
 
@@ -54,7 +83,8 @@
 ```bash
 ./gradlew :core:test          # 핵심 로직 단위 테스트
 ./gradlew :app:installDebug   # 에뮬레이터에 설치
-bash tools/record_demo.sh     # 자동 시연 + 녹화 → demo.mp4
+bash tools/record_demo.sh     # 구동 실험 자동 시연 + 녹화 → demo.mp4
+bash tools/record_scenario.sh # 시나리오 시연 + 녹화(소리 포함) → scenario.webm
 ```
 
 사용 SDK: `ai.pleos.playground:TextToSpeech:3.3.1`, `ai.pleos.playground:NaviHelper:3.0.5`
