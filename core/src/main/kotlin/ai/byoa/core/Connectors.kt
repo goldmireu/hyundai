@@ -58,13 +58,10 @@ class MockCalendarConnector(
 
         val first = upcoming.first()
         val sentences = mutableListOf("다음 일정은 ${clock(first.startMinuteOfDay)} ${first.title}입니다.")
+        // 일정 장소와 내비 목적지가 같은지 아직 확인하지 않으므로 지각 여부는 판단하지 않는다.
+        // 도착 예정 시각만 알려주고 판단은 운전자에게 맡긴다(장소 대조는 후속 단계).
         context.remainMinutes?.let { remain ->
-            val lateBy = now + remain - first.startMinuteOfDay
-            sentences += when {
-                lateBy > 0 -> "지금 예상으로는 약 ${lateBy}분 늦을 수 있습니다."
-                lateBy == 0 -> "지금 예상으로는 일정 시각에 맞춰 도착합니다."
-                else -> "지금 예상으로는 ${-lateBy}분 여유가 있습니다."
-            }
+            sentences += "현재 목적지 도착 예정은 ${clock((now + remain) % (24 * 60))}입니다."
         }
         upcoming.drop(1).forEach { sentences += "이어서 ${clock(it.startMinuteOfDay)} ${it.title}이 있습니다." }
         return AgentReply(name, sentences)

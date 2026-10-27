@@ -72,17 +72,17 @@ class PolicyAndConnectorTest {
     }
 
     @Test
-    fun `모의 일정은 지각 여부를 알려준다`() {
+    fun `모의 일정은 지각을 단정하지 않고 도착 예정 시각만 알려준다`() {
         val connector = MockCalendarConnector(
             events = listOf(MockEvent("주간 회의", 9 * 60 + 30), MockEvent("고객 미팅", 14 * 60)),
             nowMinuteOfDay = { 9 * 60 },
         )
         val late = connector.fetch(DriveContext(40, null, DrivingState.DRIVING))
         assertEquals("다음 일정은 9시 30분 주간 회의입니다.", late.sentences[0])
-        assertEquals("지금 예상으로는 약 10분 늦을 수 있습니다.", late.sentences[1])
+        assertEquals("현재 목적지 도착 예정은 9시 40분입니다.", late.sentences[1])
         assertEquals("이어서 14시 고객 미팅이 있습니다.", late.sentences[2])
 
         val early = connector.fetch(DriveContext(20, null, DrivingState.DRIVING))
-        assertEquals("지금 예상으로는 10분 여유가 있습니다.", early.sentences[1])
+        assertEquals("현재 목적지 도착 예정은 9시 20분입니다.", early.sentences[1])
     }
 }

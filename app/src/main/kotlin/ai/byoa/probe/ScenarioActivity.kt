@@ -61,7 +61,7 @@ class ScenarioActivity : Activity() {
             onUtteranceDone = { gate.onSpeechDone(); render() },
             onUtteranceError = { gate.onSpeechFailed(); render() },
         )
-        gate = SpeechGate(speaker, log)   // priorityVerified=false: 자동 발화는 보류된다
+        gate = SpeechGate(speaker, log)   // 자동 호출 결과는 운전자가 요청할 때만 재생된다
         setContentView(buildUi())
         speaker.initialize { ok ->
             log.mark("scenario.tts", if (ok) "ok" else "fail")

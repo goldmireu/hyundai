@@ -37,7 +37,7 @@ import java.util.concurrent.Executors
  *
  * 실험 패널은 시연용 화면이 아니다. 실차·Virtual Console 실험 때만 쓴다.
  */
-class MainActivity : Activity(), NaviEvents {
+class MainActivity : Activity(), NaviEvents, FocusEvents {
 
     private val main = Handler(Looper.getMainLooper())
     private val uiExecutor = Executor { main.post(it) }
@@ -105,6 +105,7 @@ class MainActivity : Activity(), NaviEvents {
     }
 
     override fun onDestroy() {
+        session.cancel("화면 종료")
         pleosNavi.stop()
         manualNavi.stop()
         focusProbe.release()
@@ -119,6 +120,11 @@ class MainActivity : Activity(), NaviEvents {
     override fun onGuidanceEnded() { gate.onNaviGuidanceEnded(); refresh() }
     override fun onRemainMinutes(minutes: Int) { remainMinutes = minutes; log.mark("navi.remain", "${minutes}분"); refresh() }
     override fun onDestination(name: String) { destination = name; refresh() }
+
+    // ---- FocusEvents: 오디오 포커스는 내비와 별개의 중단 사유 ----
+
+    override fun onFocusLost() { gate.onAudioFocusLost(); refresh() }
+    override fun onFocusRegained() { gate.onAudioFocusRegained(); refresh() }
 
     // ---- 동작 ----
 
@@ -144,7 +150,7 @@ class MainActivity : Activity(), NaviEvents {
                 startBriefing(userInitiated = false)
             },
             38_000L to { caption("⑤ 운전자가 눌렀을 때만 재생"); gate.releaseHeld(); refresh() },
-            49_000L to { gate.cancel(); caption("내 에이전트를, 차 안에서 안전하게\n차량 에이전트 허브 · Pleos Connect Emulator 구동 실험"); log.mark("demo.end") },
+            49_000L to { session.cancel("시연 종료"); caption("내 에이전트를, 차 안에서 안전하게\n차량 에이전트 허브 · Pleos Connect Emulator 구동 실험"); log.mark("demo.end") },
         )
         steps.forEach { (at, action) -> main.postDelayed({ action(); refresh() }, at) }
     }
@@ -187,14 +193,14 @@ class MainActivity : Activity(), NaviEvents {
             "$agent · ${gateLabel()}\n남은 시간: ${remainMinutes?.let { "${it}분" } ?: "알 수 없음"}\n" +
                 "읽지 않은 문장: ${gate.unspoken.size + session.deferred.size}개"
         }
-        statusView.text = "주행 상태=$drivingState · 게이트=${gate.state} · 우선순위 검증=${gate.priorityVerified} · 포커스=${focusProbe.mode}"
+        statusView.text = "주행 상태=$drivingState · 게이트=${gate.state} · 중단 사유=${gate.activeBlocks.ifEmpty { setOf("없음") }} · 포커스=${focusProbe.mode}"
     }
 
     private fun gateLabel(): String = when (gate.state) {
         SpeechGate.State.IDLE -> "대기"
         SpeechGate.State.SPEAKING -> "말하는 중"
         SpeechGate.State.PAUSED -> "내비 안내 시 일시정지"
-        SpeechGate.State.HELD -> "자동 발화 보류됨 (눌러서 듣기)"
+        SpeechGate.State.HELD -> "자동 발화 보류됨 (요청하면 재생)"
         SpeechGate.State.FINISHED -> "브리핑 완료"
     }
 
@@ -231,6 +237,7 @@ class MainActivity : Activity(), NaviEvents {
         val row2 = row()
         row2.addView(button("자동 트리거 흉내") { startBriefing(userInitiated = false) })
         row2.addView(button("에이전트 교체") {
+            session.cancel("에이전트 교체")
             agentIndex = (agentIndex + 1) % agents.size
             log.mark("agent.switch", agents[agentIndex].name)
             refresh()
@@ -256,15 +263,10 @@ class MainActivity : Activity(), NaviEvents {
             focusProbe.setMode(next, this)
             refresh()
         })
-        row4.addView(button("우선순위 검증 표시") {
-            gate.priorityVerified = !gate.priorityVerified
-            log.mark("priority.verified", gate.priorityVerified.toString())
-            refresh()
-        })
         root.addView(row4)
 
         val row5 = row()
-        row5.addView(button("브리핑 끄기") { gate.cancel(); refresh() })
+        row5.addView(button("브리핑 끄기") { session.cancel("운전자가 끔"); refresh() })
         row5.addView(button("기록 저장") { saveLog() })
         root.addView(row5)
 

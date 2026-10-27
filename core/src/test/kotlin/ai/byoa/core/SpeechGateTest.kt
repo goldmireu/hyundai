@@ -84,11 +84,16 @@ class SpeechGateTest {
     }
 
     @Test
-    fun `우선순위가 검증되지 않으면 자동 발화는 보류한다`() {
+    fun `자동 호출 결과는 운전자가 요청할 때만 재생한다`() {
         val speaker = FakeSpeaker()
         val gate = SpeechGate(speaker, log)
         gate.start(listOf("자동 브리핑."), userInitiated = false)
         assertEquals(SpeechGate.State.HELD, gate.state)
+        assertTrue(speaker.spoken.isEmpty())
+
+        gate.onNaviGuidanceStarted(); gate.onNaviGuidanceEnded()   // 재생 조건이 바뀌어도
+        gate.onAudioFocusLost(); gate.onAudioFocusRegained()
+        assertEquals(SpeechGate.State.HELD, gate.state)            // 요청 전에는 말하지 않는다
         assertTrue(speaker.spoken.isEmpty())
 
         gate.releaseHeld()
@@ -96,11 +101,21 @@ class SpeechGateTest {
     }
 
     @Test
-    fun `우선순위가 검증되면 자동 발화를 바로 한다`() {
+    fun `중단 사유가 겹치면 모든 사유가 풀릴 때까지 재생하지 않는다`() {
         val speaker = FakeSpeaker()
-        val gate = SpeechGate(speaker, log).apply { priorityVerified = true }
-        gate.start(listOf("자동 브리핑."), userInitiated = false)
+        val gate = SpeechGate(speaker, log)
+        gate.start(listOf("A.", "B."), userInitiated = true)
+        gate.onSpeechStarted()
+        gate.onNaviGuidanceStarted()          // 정숙 구간 진입
+        gate.onAudioFocusLost()               // 이어서 오디오 포커스 상실
+        gate.onAudioFocusRegained()           // 포커스는 돌아왔지만 아직 정숙 구간
+        assertEquals(SpeechGate.State.PAUSED, gate.state)
+        assertEquals(listOf("A."), speaker.spoken)
+        assertEquals(setOf(SpeechGate.Block.NAVI), gate.activeBlocks)
+
+        gate.onNaviGuidanceEnded()            // 마지막 사유가 풀려야 재개
         assertEquals(SpeechGate.State.SPEAKING, gate.state)
+        assertEquals(listOf("A.", "A."), speaker.spoken)
     }
 
     @Test

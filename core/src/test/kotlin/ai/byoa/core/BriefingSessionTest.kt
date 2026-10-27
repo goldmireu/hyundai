@@ -56,4 +56,43 @@ class BriefingSessionTest {
             .run(broken, DriveContext(null, null, DrivingState.UNKNOWN), userInitiated = true)
         assertEquals(listOf("고장 에이전트에 연결하지 못했습니다."), speaker.spoken)
     }
+
+    /** 응답을 바로 처리하지 않고 쌓아 두는 실행기. 네트워크 대기를 흉내 낸다. */
+    private class PendingExecutor : Executor {
+        val tasks = ArrayDeque<Runnable>()
+        override fun execute(command: Runnable) { tasks.addLast(command) }
+        fun runNext() = tasks.removeFirst().run()
+    }
+
+    @Test
+    fun `응답을 기다리는 동안 끄면 늦게 온 응답을 재생하지 않는다`() {
+        val io = PendingExecutor()
+        val speaker = RecordingSpeaker()
+        val log = ExperimentLog()
+        val gate = SpeechGate(speaker, log)
+        val session = BriefingSession(gate, log, io, direct)
+        session.run(RecordingConnector(listOf("늦은 응답.")), DriveContext(30, null, DrivingState.DRIVING), userInitiated = true)
+
+        session.cancel("운전자가 끔")
+        io.runNext()                                   // 응답이 이제야 도착
+
+        assertEquals(emptyList<String>(), speaker.spoken)
+        assertEquals(SpeechGate.State.FINISHED, gate.state)
+    }
+
+    @Test
+    fun `새 요청이 들어오면 이전 요청의 응답은 버린다`() {
+        val io = PendingExecutor()
+        val speaker = RecordingSpeaker()
+        val log = ExperimentLog()
+        val session = BriefingSession(SpeechGate(speaker, log), log, io, direct)
+        val context = DriveContext(30, null, DrivingState.DRIVING)
+        session.run(RecordingConnector(listOf("이전 에이전트.")), context, userInitiated = true)
+        session.run(RecordingConnector(listOf("새 에이전트.")), context, userInitiated = true)
+
+        io.runNext()                                   // 이전 요청 응답 도착 → 버림
+        assertEquals(emptyList<String>(), speaker.spoken)
+        io.runNext()                                   // 최신 요청 응답 → 재생
+        assertEquals(listOf("새 에이전트."), speaker.spoken)
+    }
 }

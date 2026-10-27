@@ -1,6 +1,7 @@
 package ai.byoa.probe
 
 import ai.byoa.core.ExperimentLog
+import ai.byoa.core.QuietZoneTracker
 import ai.pleos.playground.navi.constants.NaviErrorCode
 import ai.pleos.playground.navi.constants.NavigationStatus
 import ai.pleos.playground.navi.data.DestinationInfo
@@ -66,7 +67,7 @@ class PleosNaviSource(
     private val navi = NaviHelper(context.applicationContext)
     private var events: NaviEvents? = null
     private var connected = false
-    private var inQuietZone = false
+    private val quiet = QuietZoneTracker(QUIET_START_M, QUIET_END_M)
     private var lastTbtLog = 0L
     private var lastRemainMinutes: Int? = null
 
@@ -93,7 +94,7 @@ class PleosNaviSource(
         }
 
         override fun onRouteCancelled() {
-            main.post { log.mark("navi.sdk.route.cancelled"); leaveQuietZone("경로 취소") }
+            main.post { log.mark("navi.sdk.route.cancelled"); applyChange(quiet.onRouteEnded(), "경로 취소") }
         }
 
         override fun onDestinationInfo(destinationInfo: DestinationInfo) {
@@ -158,20 +159,17 @@ class PleosNaviSource(
             val all = list.take(5).joinToString(" / ") { "${it.type}:${it.distance.toInt()}m" }
             log.mark("navi.sdk.tbt", if (list.isEmpty()) "없음" else "다음=${next?.let { "${it.type} ${it.distance.toInt()}m" } ?: "-"} | 목록 $all")
         }
-        if (next == null) { leaveQuietZone("TBT 없음"); return }
-        if (!inQuietZone && next.distance <= QUIET_START_M) {
-            inQuietZone = true
-            log.mark("navi.quiet.enter", "${next.type} ${next.distance.toInt()}m")
-            events?.onGuidanceStarted()
-        } else if (inQuietZone && next.distance >= QUIET_END_M) {
-            leaveQuietZone("${next.distance.toInt()}m")
-        }
+        // 회전 정보가 비면 일시적 누락일 수 있으므로 정숙 구간을 풀지 않는다(QuietZoneTracker).
+        val change = quiet.onTbt(next?.distance)
+        if (next == null && quiet.inQuietZone && quiet.missingCount == 1) log.mark("navi.tbt.missing", "정숙 구간 유지")
+        applyChange(change, next?.let { "${it.type} ${it.distance.toInt()}m" } ?: "")
     }
 
-    private fun leaveQuietZone(reason: String) {
-        if (!inQuietZone) return
-        inQuietZone = false
-        log.mark("navi.quiet.exit", reason)
-        events?.onGuidanceEnded()
+    private fun applyChange(change: QuietZoneTracker.Change?, detail: String) {
+        when (change) {
+            QuietZoneTracker.Change.ENTER -> { log.mark("navi.quiet.enter", detail); events?.onGuidanceStarted() }
+            QuietZoneTracker.Change.EXIT -> { log.mark("navi.quiet.exit", detail); events?.onGuidanceEnded() }
+            null -> Unit
+        }
     }
 }
